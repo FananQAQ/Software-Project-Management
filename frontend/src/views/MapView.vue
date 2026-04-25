@@ -47,7 +47,7 @@ onUnmounted(() => clearInterval(timer))
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #050810;
+  background: #f5f5f5;
   overflow: hidden;
 }
 
@@ -57,8 +57,8 @@ onUnmounted(() => clearInterval(timer))
   justify-content: space-between;
   height: 48px;
   padding: 0 24px;
-  background: rgba(3, 5, 15, 0.96);
-  border-bottom: 1px solid rgba(0, 229, 255, 0.15);
+  background: #1a1a2e;
+  border-bottom: 2px solid #e63946;
   flex-shrink: 0;
   z-index: 2000;
 }
@@ -66,7 +66,7 @@ onUnmounted(() => clearInterval(timer))
 .logo {
   font-size: 15px;
   font-weight: 700;
-  color: #00e5ff;
+  color: #ffffff;
   letter-spacing: 2px;
 }
 
@@ -78,22 +78,22 @@ onUnmounted(() => clearInterval(timer))
 
 .stat {
   font-size: 12px;
-  color: #555;
+  color: #aaa;
 }
 
 .stat strong {
-  color: #76ff03;
+  color: #ff9500;
   font-size: 14px;
 }
 
 .divider {
-  color: #2a2a3a;
+  color: #444;
   font-size: 12px;
 }
 
 .time {
   font-size: 12px;
-  color: #444;
+  color: #888;
   font-variant-numeric: tabular-nums;
   letter-spacing: 1px;
 }

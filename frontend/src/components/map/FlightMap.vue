@@ -47,9 +47,9 @@ import FlightPopup from './FlightPopup.vue'
 
 const mapEl = ref(null)
 let map = null
-let tracksLayer = null
+let routesLayer  = null
+let markersLayer = null
 
-// flightId -> L.Marker，保留引用以便直接 setLatLng 更新
 const markerMap = new Map()
 
 const speedOptions = [
@@ -64,20 +64,31 @@ function setSpeed(v) {
   store.setSimSpeed(v)
 }
 
-// 俯视角飞机 SVG
+// 俯视角飞机 SVG — pointer-events:none 保证点击穿透到 Leaflet marker
 function createPlaneIcon(heading, selected = false) {
-  const color = selected ? '#00e5ff' : '#76ff03'
-  const glow = selected ? 'drop-shadow(0 0 5px #00e5ff)' : 'drop-shadow(0 0 3px #76ff03)'
+  const fill   = selected ? '#e63946' : '#1a1a2e'
+  const stroke = '#ffffff'
+  const glow   = selected
+    ? 'drop-shadow(0 0 4px #e63946) drop-shadow(0 0 8px rgba(230,57,70,0.5))'
+    : 'drop-shadow(1px 1px 2px rgba(0,0,0,0.55))'
   const size = selected ? 34 : 26
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="${size}" height="${size}">
+  const sw   = selected ? 1.2 : 0.9
+  // pointer-events:none → 让点击穿透 SVG，由外层 div (Leaflet marker) 响应
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"
+    width="${size}" height="${size}" style="pointer-events:none;display:block">
     <g transform="rotate(${heading},16,16)" style="filter:${glow}">
-      <ellipse cx="16" cy="16" rx="2.5" ry="11" fill="${color}"/>
-      <path d="M16 15 L3 23 L3 25 L16 20 L29 25 L29 23 Z" fill="${color}"/>
-      <path d="M16 24 L11 30 L12 31 L16 27.5 L20 31 L21 30 Z" fill="${color}"/>
-      <ellipse cx="16" cy="7" rx="1.5" ry="2" fill="white" opacity="0.6"/>
+      <ellipse cx="16" cy="16" rx="2.5" ry="11" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+      <path d="M16 15 L3 23 L3 25 L16 20 L29 25 L29 23 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/>
+      <path d="M16 24 L11 30 L12 31 L16 27.5 L20 31 L21 30 Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round"/>
+      <ellipse cx="16" cy="7" rx="1.2" ry="1.8" fill="white" opacity="0.7"/>
     </g>
   </svg>`
-  return L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2] })
+  return L.divIcon({
+    html: `<div style="cursor:pointer;width:${size}px;height:${size}px">${svg}</div>`,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  })
 }
 
 function initMap() {
@@ -89,61 +100,93 @@ function initMap() {
     maxBounds: [[15, 68], [56, 140]],
     maxBoundsViscosity: 0.85,
   })
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     subdomains: 'abcd', maxZoom: 18,
   }).addTo(map)
   L.control.zoom({ position: 'topright' }).addTo(map)
-  tracksLayer = L.layerGroup().addTo(map)
+  routesLayer  = L.layerGroup().addTo(map)   // 航线虚线（起点→终点）：在下层
+  markersLayer = L.layerGroup().addTo(map)   // 飞机图标：在上层
 }
 
-// 全量初始化所有 marker（首次加载）
+// ── 航线虚线（起点→终点）─────────────────────────────────────────
+// flightId -> L.Polyline
+const routeLineMap = new Map()
+
+function syncRouteLines() {
+  const activeIds = new Set()
+
+  store.flights.forEach(f => {
+    if (f.status === 'LANDING') {
+      // 落地后移除航线
+      const old = routeLineMap.get(f.flightId)
+      if (old) { old.remove(); routeLineMap.delete(f.flightId) }
+      return
+    }
+    activeIds.add(f.flightId)
+    const selected = store.selectedFlight?.flightId === f.flightId
+    const color    = selected ? '#e63946' : '#888888'
+    const weight   = selected ? 2 : 1.2
+    const opacity  = selected ? 0.75 : 0.4
+
+    if (routeLineMap.has(f.flightId)) {
+      // 只更新样式（起终点不变，不重建）
+      const line = routeLineMap.get(f.flightId)
+      line.setStyle({ color, weight, opacity })
+    } else {
+      // 新建航线
+      const line = L.polyline(
+        [[f.origLat, f.origLng], [f.destLat, f.destLng]],
+        { color, weight, opacity, dashArray: '6 8', interactive: false }
+      ).addTo(routesLayer)
+      routeLineMap.set(f.flightId, line)
+    }
+  })
+
+  // 清理已消失的（重生后 ID 复用，不会有残留）
+}
+
+// ── 飞机 Marker ────────────────────────────────────────────────────
 function initMarkers() {
   markerMap.forEach(m => m.remove())
   markerMap.clear()
   store.flights.forEach(f => {
     const selected = store.selectedFlight?.flightId === f.flightId
-    const marker = L.marker([f.latitude, f.longitude], { icon: createPlaneIcon(f.heading, selected) })
+    const marker = L.marker([f.latitude, f.longitude], {
+      icon: createPlaneIcon(f.heading, selected),
+      interactive: true,
+    })
     marker.on('click', () => store.selectFlight(f.flightId))
-    marker.bindTooltip(f.flightNo, { permanent: false, direction: 'top', className: 'flight-tooltip', offset: [0, -12] })
+    marker.bindTooltip(f.flightNo, {
+      permanent: false, direction: 'top',
+      className: 'flight-tooltip', offset: [0, -14],
+    })
     marker.addTo(map)
     markerMap.set(f.flightId, marker)
   })
 }
 
-// 每帧只更新 marker 位置（高性能）
 function updateMarkerPositions() {
   store.flights.forEach(f => {
     const marker = markerMap.get(f.flightId)
     if (!marker) return
+    if (f.status === 'LANDING') {
+      marker.setOpacity(0)
+      return
+    }
+    marker.setOpacity(1)
     marker.setLatLng([f.latitude, f.longitude])
     const selected = store.selectedFlight?.flightId === f.flightId
     marker.setIcon(createPlaneIcon(f.heading, selected))
   })
 }
 
-// 重绘所有轨迹线
-function renderTracks() {
-  tracksLayer.clearLayers()
-  store.flights.forEach(f => {
-    if (!f.track || f.track.length < 2) return
-    const latLngs = f.track.map(p => [p.lat, p.lng])
-    const selected = store.selectedFlight?.flightId === f.flightId
-    if (selected) {
-      for (let i = 1; i < latLngs.length; i++) {
-        const opacity = 0.2 + (i / latLngs.length) * 0.8
-        L.polyline([latLngs[i - 1], latLngs[i]], { color: '#00e5ff', weight: 2.5, opacity }).addTo(tracksLayer)
-      }
-    } else {
-      L.polyline(latLngs, { color: '#76ff03', weight: 1, opacity: 0.22, dashArray: '4 6' }).addTo(tracksLayer)
-    }
-  })
-}
-
 async function refresh() {
   store.stopSimulation()
+  routeLineMap.forEach(l => l.remove())
+  routeLineMap.clear()
   await store.loadFlights()
   initMarkers()
-  renderTracks()
+  syncRouteLines()
   store.startSimulation()
 }
 
@@ -155,7 +198,7 @@ onMounted(async () => {
   initMap()
   await store.loadFlights()
   initMarkers()
-  renderTracks()
+  syncRouteLines()
   store.startSimulation()
 })
 
@@ -164,17 +207,16 @@ onUnmounted(() => {
   map?.remove()
 })
 
-// 每次仿真 tick：只更新 marker 位置
+// 每 tick：更新位置；每 6 tick 同步一次航线（处理落地/重生）
 watch(() => store.simTick, () => {
   updateMarkerPositions()
-  // 每 5 tick 重绘轨迹，避免每帧都重绘
-  if (store.simTick % 5 === 0) renderTracks()
+  if (store.simTick % 6 === 0) syncRouteLines()
 })
 
-// 选中变化时刷新图标颜色和轨迹高亮
+// 选中变化：刷新图标颜色 + 航线高亮
 watch(() => store.selectedFlight, () => {
   updateMarkerPositions()
-  renderTracks()
+  syncRouteLines()
 })
 </script>
 
@@ -216,20 +258,21 @@ watch(() => store.selectedFlight, () => {
 
 .ctrl-btn {
   padding: 6px 14px;
-  background: rgba(10,14,26,0.88);
-  color: #aaa;
-  border: 1px solid rgba(0,229,255,0.2);
+  background: rgba(255,255,255,0.88);
+  color: #333;
+  border: 1px solid rgba(0,0,0,0.15);
   border-radius: 20px;
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
 }
 
 .ctrl-btn:hover {
-  background: rgba(0,229,255,0.1);
-  color: #00e5ff;
-  border-color: rgba(0,229,255,0.5);
+  background: #fff;
+  color: #e63946;
+  border-color: #e63946;
 }
 
 /* 流速控制栏 */
@@ -240,17 +283,18 @@ watch(() => store.selectedFlight, () => {
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(8,12,24,0.88);
-  border: 1px solid rgba(0,229,255,0.18);
+  gap: 4px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(0,0,0,0.12);
   border-radius: 24px;
-  padding: 6px 14px;
+  padding: 5px 12px;
   z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
 .speed-label {
   font-size: 11px;
-  color: #555;
+  color: #888;
   margin-right: 4px;
   white-space: nowrap;
 }
@@ -270,28 +314,29 @@ watch(() => store.selectedFlight, () => {
 }
 
 .speed-btn:hover {
-  color: #ccc;
-  border-color: rgba(0,229,255,0.25);
+  color: #333;
+  background: rgba(0,0,0,0.06);
 }
 
 .speed-btn.active {
-  background: rgba(0,229,255,0.15);
-  color: #00e5ff;
-  border-color: rgba(0,229,255,0.5);
+  background: #e63946;
+  color: #fff;
+  border-color: #e63946;
 }
 
 .map-legend {
   position: absolute;
   bottom: 24px;
   left: 14px;
-  background: rgba(10,14,26,0.85);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(0,0,0,0.1);
   border-radius: 6px;
   padding: 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
 
 .legend-item {
@@ -299,7 +344,7 @@ watch(() => store.selectedFlight, () => {
   align-items: center;
   gap: 7px;
   font-size: 12px;
-  color: #888;
+  color: #555;
 }
 
 .dot {
@@ -310,6 +355,6 @@ watch(() => store.selectedFlight, () => {
   flex-shrink: 0;
 }
 
-.dot-fly { background: #76ff03; }
-.dot-sel { background: #00e5ff; }
+.dot-fly { background: #1a1a2e; border: 1.5px solid #fff; }
+.dot-sel { background: #e63946; }
 </style>

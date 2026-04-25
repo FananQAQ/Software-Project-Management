@@ -21,4 +21,4 @@ spring:
 
 # 跨域：允许前端 localhost:5173 访问
 cors:
-  allowed-origins: http://localhost:5173
+  allowed-origins: http://localhost:7175

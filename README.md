@@ -1,2 +1,302 @@
-# Software-Project-Management
-软件项目管理课程设计
+# ✈ 航班信息跟踪平台
+
+> 软件项目管理课程设计 · Spring Boot + Vue 3 · 多人协作项目
+
+---
+
+## 目录
+
+- [项目简介](#项目简介)
+- [已完成功能](#已完成功能)
+- [技术栈](#技术栈)
+- [项目结构](#项目结构)
+- [快速启动](#快速启动)
+- [后端接口文档](#后端接口文档)
+- [后续开发计划](#后续开发计划)
+- [多人协作规范](#多人协作规范)
+
+---
+
+## 项目简介
+
+航班信息跟踪平台是一个可视化的国内航班实时追踪系统。用户可以在地图上查看所有在途航班的位置、航向、高度、速度等信息，支持点击查看单条航班详情，并可调整仿真时间流速观察航班动态。
+
+---
+
+## 已完成功能
+
+### 前端（`frontend/`）
+- [x] Vue 3 + Vite 工程初始化，MVC 分层目录结构
+- [x] Leaflet.js 彩色地图（CartoDB Voyager），限定中国范围
+- [x] 40 架模拟国内航班，覆盖 20 个主要机场
+- [x] 俯视角 SVG 飞机图标，随航向实时旋转
+- [x] 飞机从出发地沿直线飞往目的地，到达后消失并随机重生新航班
+- [x] 每条航线全程展示虚线（出发地 → 目的地），落地后虚线消失
+- [x] 点击飞机弹出详情面板（航班号 / 出发地 / 目的地 / 高度 / 速度 / 坐标 / 状态）
+- [x] 底部仿真速率控制栏（⏸ 暂停 / 1× / 2× / 5× / 10×）
+- [x] 顶部导航栏实时显示在线航班数量与系统时钟
+- [x] 后端接口层（`src/api/flightApi.js`），可一键切换 Mock ↔ 真实后端
+
+### 后端（`backend/`）
+- [x] Spring Boot 3.2 + Maven 工程初始化
+- [x] MVC 分层架构：`entity / repository / service / controller / dto`
+- [x] H2 内存数据库（开发阶段），启动自动建表并插入测试数据
+- [x] 跨域配置（允许前端 `localhost:7175` 访问）
+- [x] 航班（`Flight`）实体与轨迹点（`FlightTrackPoint`）实体
+- [x] RESTful 接口骨架：查询航班列表、详情、历史轨迹
+
+---
+
+## 技术栈
+
+| 层次 | 技术 |
+|---|---|
+| 前端框架 | Vue 3 + Vite |
+| 地图库 | Leaflet.js |
+| HTTP 客户端 | Axios |
+| 后端框架 | Spring Boot 3.2 |
+| 持久层 | Spring Data JPA |
+| 数据库（开发）| H2 内存数据库 |
+| 数据库（生产）| MySQL（待接入） |
+| 构建工具 | Maven 3.9 |
+| 运行环境 | JDK 21 / Node.js 18+ |
+| 版本管理 | Git + GitHub |
+
+---
+
+## 项目结构
+
+```
+project/
+├── frontend/                    # Vue 3 前端
+│   ├── src/
+│   │   ├── api/
+│   │   │   └── flightApi.js     # 后端接口封装
+│   │   ├── components/
+│   │   │   └── map/
+│   │   │       ├── FlightMap.vue    # 地图主组件（核心）
+│   │   │       └── FlightPopup.vue  # 航班详情弹窗
+│   │   ├── store/
+│   │   │   └── flightStore.js   # 全局状态 + 仿真引擎
+│   │   ├── views/
+│   │   │   └── MapView.vue      # 地图页面
+│   │   ├── App.vue
+│   │   └── main.js
+│   ├── .env.development         # 开发环境变量
+│   └── vite.config.js
+│
+├── backend/                     # Spring Boot 后端
+│   ├── src/main/java/com/flighttrack/
+│   │   ├── FlightTrackApplication.java   # 启动入口
+│   │   ├── controller/
+│   │   │   ├── FlightController.java     # 航班 REST 接口
+│   │   │   └── GlobalCorsConfig.java     # 跨域配置
+│   │   ├── service/
+│   │   │   └── FlightService.java        # 业务逻辑
+│   │   ├── repository/
+│   │   │   ├── FlightRepository.java
+│   │   │   └── FlightTrackPointRepository.java
+│   │   ├── entity/
+│   │   │   ├── Flight.java               # 航班实体
+│   │   │   └── FlightTrackPoint.java     # 轨迹点实体
+│   │   └── dto/
+│   │       └── FlightDTO.java            # 接口返回结构
+│   └── src/main/resources/
+│       ├── application.yml
+│       └── data.sql                      # 初始化测试数据
+│
+└── README.md
+```
+
+---
+
+## 快速启动
+
+### 环境要求
+
+| 工具 | 版本 |
+|---|---|
+| JDK | 21 |
+| Maven | 3.9+ |
+| Node.js | 18+ |
+| npm | 9+ |
+
+### 启动前端
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+> 访问 [http://localhost:7175](http://localhost:7175)
+
+### 启动后端
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+> 后端服务运行在 [http://localhost:8080](http://localhost:8080)
+>
+> H2 控制台（开发用）：[http://localhost:8080/h2-console](http://localhost:8080/h2-console)
+> - JDBC URL：`jdbc:h2:mem:flightdb`
+> - 用户名：`sa`，密码：空
+
+### 切换为真实后端数据
+
+在 `frontend/src/store/flightStore.js` 中将：
+
+```js
+useMock: true,
+```
+
+改为：
+
+```js
+useMock: false,
+```
+
+前端将自动调用 `http://localhost:8080/api/flights` 拉取真实数据。
+
+---
+
+## 后端接口文档
+
+### Base URL
+
+```
+http://localhost:8080
+```
+
+### 航班接口
+
+#### 获取所有飞行中的航班
+
+```
+GET /api/flights
+```
+
+**响应示例**
+
+```json
+[
+  {
+    "id": 1,
+    "flightNo": "CA1001",
+    "origin": "北京首都",
+    "destination": "上海浦东",
+    "latitude": 35.5,
+    "longitude": 118.0,
+    "altitude": 10000,
+    "speed": 850,
+    "heading": 135,
+    "status": "IN_FLIGHT",
+    "updatedAt": "2026-04-25T14:00:00"
+  }
+]
+```
+
+#### 获取单个航班详情
+
+```
+GET /api/flights/{id}
+```
+
+#### 获取航班历史轨迹
+
+```
+GET /api/flights/{id}/track
+```
+
+**响应示例**
+
+```json
+[
+  { "latitude": 40.08, "longitude": 116.58 },
+  { "latitude": 37.20, "longitude": 117.80 },
+  { "latitude": 35.50, "longitude": 118.00 }
+]
+```
+
+### 字段说明
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `flightNo` | String | 航班号，如 `CA1001` |
+| `origin` | String | 出发机场名称 |
+| `destination` | String | 目的机场名称 |
+| `latitude` | Double | 当前纬度（°N） |
+| `longitude` | Double | 当前经度（°E） |
+| `altitude` | Integer | 飞行高度（米） |
+| `speed` | Integer | 飞行速度（km/h） |
+| `heading` | Integer | 航向角（0-359°，0 为正北） |
+| `status` | String | `IN_FLIGHT` / `LANDED` / `DELAYED` / `CANCELLED` |
+
+---
+
+## 后续开发计划
+
+### 高优先级
+- [ ] 对接真实航班数据 API（推荐：[AviationStack](https://aviationstack.com) 或 [OpenSky Network](https://opensky-network.org)）
+- [ ] 将 H2 替换为 MySQL，完成持久化存储
+- [ ] 实现 WebSocket 推送，后端主动推送航班位置更新（替代前端定时轮询）
+- [ ] 用户登录与权限系统（Spring Security + JWT）
+
+### 功能扩展
+- [ ] 航班搜索（按航班号 / 出发地 / 目的地筛选）
+- [ ] 延误 / 取消告警提醒（弹窗 + 颜色标注）
+- [ ] 机场信息页（各机场出发 / 到达航班列表）
+- [ ] 航班统计报表（折线图 / 柱状图）
+- [ ] 天气图层叠加（云层、降水）
+
+### 工程优化
+- [ ] 后端航班数据定时采集调度（Spring `@Scheduled`）
+- [ ] 接口统一响应格式（`Result<T>` 封装）
+- [ ] 全局异常处理（`@RestControllerAdvice`）
+- [ ] 前端路由（Vue Router）+ 多页面支持
+- [ ] 单元测试 / 集成测试补全
+
+---
+
+## 多人协作规范
+
+### 分支策略
+
+```
+main          ← 稳定版本，只接受 PR 合并
+dev           ← 日常开发集成分支
+feature/xxx   ← 个人功能开发分支（从 dev 切出）
+```
+
+### 工作流程
+
+```bash
+# 1. 从 dev 新建自己的功能分支
+git checkout dev
+git pull origin dev
+git checkout -b feature/你的功能名
+
+# 2. 开发完成后提交
+git add .
+git commit -m "feat: 简要描述"
+
+# 3. 推送并发起 Pull Request → dev
+git push -u origin feature/你的功能名
+```
+
+### Commit 规范
+
+| 前缀 | 含义 |
+|---|---|
+| `feat:` | 新功能 |
+| `fix:` | Bug 修复 |
+| `refactor:` | 代码重构 |
+| `docs:` | 文档更新 |
+| `style:` | 样式调整 |
+| `chore:` | 构建 / 依赖调整 |
+
+---
+
+> 仓库地址：[https://github.com/FananQAQ/Software-Project-Management](https://github.com/FananQAQ/Software-Project-Management)
