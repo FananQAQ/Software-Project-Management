@@ -138,9 +138,9 @@ cd backend
 mvn spring-boot:run
 ```
 
-> 后端服务运行在 [http://localhost:8080](http://localhost:8080)
+> 后端服务运行在 [http://localhost:7176](http://localhost:7176)
 >
-> H2 控制台（开发用）：[http://localhost:8080/h2-console](http://localhost:8080/h2-console)
+> H2 控制台（开发用）：[http://localhost:7176/h2-console](http://localhost:7176/h2-console)
 > - JDBC URL：`jdbc:h2:mem:flightdb`
 > - 用户名：`sa`，密码：空
 
@@ -167,7 +167,7 @@ useMock: false,
 ### Base URL
 
 ```
-http://localhost:8080
+http://localhost:7176
 ```
 
 ### 航班接口
