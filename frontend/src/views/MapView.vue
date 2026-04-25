@@ -6,9 +6,9 @@
         <span class="logo">✈ 航班信息跟踪平台</span>
       </div>
       <div class="topbar-center">
-        <span class="stat">
-          在线航班：<strong>{{ store.flights.length }}</strong>
-        </span>
+        <span class="stat">在线航班&nbsp;<strong>{{ store.flights.length }}</strong></span>
+        <span class="divider">|</span>
+        <span class="stat">飞行中&nbsp;<strong>{{ inFlightCount }}</strong></span>
       </div>
       <div class="topbar-right">
         <span class="time">{{ currentTime }}</span>
@@ -23,11 +23,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import FlightMap from '../components/map/FlightMap.vue'
 import { flightStore as store } from '../store/flightStore'
 
 const currentTime = ref('')
+const inFlightCount = computed(() =>
+  store.flights.filter(f => f.status === 'IN_FLIGHT').length
+)
 
 function updateTime() {
   const now = new Date()
@@ -35,10 +38,7 @@ function updateTime() {
 }
 
 let timer = null
-onMounted(() => {
-  updateTime()
-  timer = setInterval(updateTime, 1000)
-})
+onMounted(() => { updateTime(); timer = setInterval(updateTime, 1000) })
 onUnmounted(() => clearInterval(timer))
 </script>
 
@@ -47,7 +47,7 @@ onUnmounted(() => clearInterval(timer))
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #0a0e1a;
+  background: #050810;
   overflow: hidden;
 }
 
@@ -56,34 +56,46 @@ onUnmounted(() => clearInterval(timer))
   align-items: center;
   justify-content: space-between;
   height: 48px;
-  padding: 0 20px;
-  background: rgba(5, 8, 18, 0.95);
-  border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+  padding: 0 24px;
+  background: rgba(3, 5, 15, 0.96);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.15);
   flex-shrink: 0;
   z-index: 2000;
 }
 
 .logo {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: #00e5ff;
   letter-spacing: 2px;
 }
 
+.topbar-center {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .stat {
-  font-size: 13px;
-  color: #888;
+  font-size: 12px;
+  color: #555;
 }
 
 .stat strong {
   color: #76ff03;
-  font-size: 15px;
+  font-size: 14px;
+}
+
+.divider {
+  color: #2a2a3a;
+  font-size: 12px;
 }
 
 .time {
-  font-size: 13px;
-  color: #666;
+  font-size: 12px;
+  color: #444;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
 }
 
 .map-body {
