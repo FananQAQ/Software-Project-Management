@@ -29,7 +29,10 @@
       <span class="legend-item"><i class="dot dot-sel"></i>已选中</span>
     </div>
 
-    <!-- 航班详情弹窗 -->
+    <!-- 机场详情面板（左侧） -->
+    <AirportPanel v-if="store.selectedAirport" />
+
+    <!-- 航班详情弹窗（右侧） -->
     <FlightPopup
       v-if="store.selectedFlight"
       :flight="store.selectedFlight"
@@ -42,8 +45,9 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { flightStore as store } from '../../store/flightStore'
+import { flightStore as store, AIRPORTS } from '../../store/flightStore'
 import FlightPopup from './FlightPopup.vue'
+import AirportPanel from './AirportPanel.vue'
 
 const mapEl = ref(null)
 let map = null
@@ -51,6 +55,7 @@ let routesLayer  = null
 let markersLayer = null
 
 const markerMap = new Map()
+let airportLayer = null   // 机场图标层
 
 const speedOptions = [
   { label: '⏸', value: 0 },
@@ -97,6 +102,7 @@ function initMap() {
     zoom: 4,
     zoomControl: false,
     attributionControl: false,
+    doubleClickZoom: false,   // 禁用双击缩放，确保单击事件能立即响应
     maxBounds: [[15, 68], [56, 140]],
     maxBoundsViscosity: 0.85,
   })
@@ -104,9 +110,55 @@ function initMap() {
     subdomains: 'abcd', maxZoom: 18,
   }).addTo(map)
   L.control.zoom({ position: 'topright' }).addTo(map)
-  routesLayer  = L.layerGroup().addTo(map)   // 航线虚线（起点→终点）：在下层
-  markersLayer = L.layerGroup().addTo(map)   // 飞机图标：在上层
+  routesLayer  = L.layerGroup().addTo(map)   // 航线虚线（在下层）
+  airportLayer = L.layerGroup().addTo(map)   // 机场图标（中间层）
+  markersLayer = L.layerGroup().addTo(map)   // 飞机图标（最上层）
 }
+
+// ── 机场图标 ─────────────────────────────────────────────────────
+function createAirportIcon(selected = false) {
+  const color  = selected ? '#e63946' : '#00bcd4'
+  const border = selected ? '#fff' : 'rgba(255,255,255,0.6)'
+  const size   = selected ? 14 : 10
+  return L.divIcon({
+    html: `<div style="
+      width:${size}px;height:${size}px;
+      background:${color};
+      border:2px solid ${border};
+      border-radius:50%;
+      box-shadow:0 0 ${selected ? 8 : 4}px ${color};
+      cursor:pointer;
+    "></div>`,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  })
+}
+
+function initAirportMarkers() {
+  airportLayer.clearLayers()
+  AIRPORTS.forEach(a => {
+    const selected = store.selectedAirport === a.name
+    const marker = L.marker([a.lat, a.lng], {
+      icon: createAirportIcon(selected),
+      interactive: true,
+      zIndexOffset: -100,
+    })
+    marker.bindTooltip(a.name, {
+      permanent: false, direction: 'top',
+      className: 'airport-tooltip', offset: [0, -8],
+    })
+    marker.on('click', () => {
+      store.selectAirport(a.name)
+    })
+    marker.addTo(airportLayer)
+  })
+}
+
+// 机场选中状态变化时重绘图标
+watch(() => store.selectedAirport, () => {
+  initAirportMarkers()
+})
 
 // ── 航线虚线（起点→终点）─────────────────────────────────────────
 // flightId -> L.Polyline
@@ -155,6 +207,7 @@ function initMarkers() {
       icon: createPlaneIcon(f.heading, selected),
       interactive: true,
     })
+    marker._planeHeading = f.heading   // 记录当前航向，仅在变化时才重建图标
     marker.on('click', () => store.selectFlight(f.flightId))
     marker.bindTooltip(f.flightNo, {
       permanent: false, direction: 'top',
@@ -175,8 +228,12 @@ function updateMarkerPositions() {
     }
     marker.setOpacity(1)
     marker.setLatLng([f.latitude, f.longitude])
-    const selected = store.selectedFlight?.flightId === f.flightId
-    marker.setIcon(createPlaneIcon(f.heading, selected))
+    // 仅当航向变化时（飞机重生了新航线）才重建图标，避免频繁 setIcon 导致点击失效
+    if (marker._planeHeading !== f.heading) {
+      const selected = store.selectedFlight?.flightId === f.flightId
+      marker.setIcon(createPlaneIcon(f.heading, selected))
+      marker._planeHeading = f.heading
+    }
   })
 }
 
@@ -196,6 +253,7 @@ function resetView() {
 
 onMounted(async () => {
   initMap()
+  initAirportMarkers()
   await store.loadFlights()
   initMarkers()
   syncRouteLines()
@@ -213,9 +271,24 @@ watch(() => store.simTick, () => {
   if (store.simTick % 6 === 0) syncRouteLines()
 })
 
-// 选中变化：刷新图标颜色 + 航线高亮
-watch(() => store.selectedFlight, () => {
-  updateMarkerPositions()
+// 搜索定位：平移地图到目标航班并放大
+watch(() => store.focusFlightId, (id) => {
+  if (!id || !map) return
+  const f = store.flights.find(fl => fl.flightId === id)
+  if (f) map.setView([f.latitude, f.longitude], 7, { animate: true, duration: 0.6 })
+  store.focusFlightId = null   // 消费后清空，避免重复触发
+})
+
+// 选中变化：只精确更新前一个和当前选中的图标颜色，避免全量 setIcon
+watch(() => store.selectedFlight, (newFlight, oldFlight) => {
+  if (oldFlight) {
+    const m = markerMap.get(oldFlight.flightId)
+    if (m) { m.setIcon(createPlaneIcon(oldFlight.heading, false)); m._planeHeading = oldFlight.heading }
+  }
+  if (newFlight) {
+    const m = markerMap.get(newFlight.flightId)
+    if (m) { m.setIcon(createPlaneIcon(newFlight.heading, true)); m._planeHeading = newFlight.heading }
+  }
   syncRouteLines()
 })
 </script>
@@ -357,4 +430,18 @@ watch(() => store.selectedFlight, () => {
 
 .dot-fly { background: #1a1a2e; border: 1.5px solid #fff; }
 .dot-sel { background: #e63946; }
+</style>
+
+<style>
+/* 机场 tooltip（全局，覆盖 Leaflet 默认样式） */
+.airport-tooltip {
+  background: rgba(0, 14, 30, 0.88) !important;
+  border: 1px solid rgba(0,188,212,0.4) !important;
+  color: #00e5ff !important;
+  font-size: 11px !important;
+  padding: 3px 8px !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+.airport-tooltip::before { display: none !important; }
 </style>

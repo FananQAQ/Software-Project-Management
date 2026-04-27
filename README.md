@@ -19,7 +19,7 @@
 
 ## 项目简介
 
-航班信息跟踪平台是一个可视化的国内航班实时追踪系统。用户可以在地图上查看所有在途航班的位置、航向、高度、速度等信息，支持点击查看单条航班详情，并可调整仿真时间流速观察航班动态。前端采用 Vue 3 + Leaflet.js 实现地图可视化，后端采用 Spring Boot 3 + MySQL 提供 RESTful 数据接口，前后端完全分离。
+航班信息跟踪平台是一个可视化的国内航班动态追踪系统。用户可以在地图上查看 100 架在途航班的实时位置、航向、高度、速度等信息，支持单击查看单条航班详情，并可调整仿真时间流速观察航班动态。前端采用 Vue 3 + Leaflet.js 实现地图可视化，后端采用 Spring Boot 3 + MySQL 提供 RESTful 数据接口，前后端完全分离。
 
 ---
 
@@ -28,21 +28,23 @@
 ### 前端（`frontend/`）
 - [x] Vue 3 + Vite 工程初始化，MVC 分层目录结构（views / components / api / store）
 - [x] Leaflet.js 彩色地图（CartoDB Voyager），地图范围限定中国境内
-- [x] 覆盖国内 20 个主要机场的航班仿真数据
+- [x] 覆盖国内 30 个主要机场、100 条预置航班仿真数据
 - [x] 俯视角 SVG 飞机图标，随航向实时旋转，选中高亮红色
 - [x] 飞机从出发地沿直线严格飞往目的地（progress 插值，非随机漂移）
 - [x] 到达目的地后飞机消失约 3 秒，随机重生新航班继续飞行
 - [x] 每条航线全程展示虚线（出发地 → 目的地），落地后虚线同步消失
-- [x] 点击飞机弹出详情面板（航班号 / 出发地 / 目的地 / 高度 / 速度 / 坐标 / 状态）
+- [x] **单击**飞机弹出详情面板（航班号 / 出发地 / 目的地 / 高度 / 速度 / 坐标 / 状态）
 - [x] 底部仿真速率控制栏（⏸ 暂停 / 1× / 2× / 5× / 10×）
 - [x] 顶部导航栏实时显示在线航班数量、飞行中数量与系统时钟
-- [x] 后端接口层（`src/api/flightApi.js`），`useMock` 一键切换 Mock ↔ 真实后端
+- [x] **航班搜索**：顶栏搜索框支持按航班号、出发地、目的地模糊查询，回车或点击结果自动定位并高亮该航班
+- [x] **机场详情页**：地图上展示 30 个机场图标（青色圆点），单击机场弹出左侧详情面板，显示出发/到达航班列表，点击航班行可直接定位并高亮对应飞机
+- [x] 后端接口层（`src/api/flightApi.js`），支持后端数据与 Mock 数据切换
 
 ### 后端（`backend/`）
 - [x] Spring Boot 3.2 + Maven 工程初始化
 - [x] MVC 分层架构：`entity / repository / service / controller / dto`
 - [x] MySQL 8.0 持久化存储，JPA 自动建表（`ddl-auto: update`）
-- [x] 启动时自动执行 `data.sql` 插入 5 条初始测试航班数据
+- [x] 启动时自动执行 `data.sql` 插入 **100 条**预置航班数据（覆盖 30 个机场）
 - [x] 全局跨域配置（`WebMvcConfigurer`），允许前端 `localhost:7175` 访问
 - [x] 航班实体（`Flight`）+ 轨迹点实体（`FlightTrackPoint`）
 - [x] RESTful 接口：获取所有飞行中航班、单个航班详情、航班历史轨迹
@@ -106,7 +108,7 @@ project/
 │   │       └── FlightDTO.java               # 接口响应 DTO
 │   └── src/main/resources/
 │       ├── application.yml                  # 数据库 / 端口配置
-│       └── data.sql                         # 初始测试数据
+│       └── data.sql                         # 100 条预置航班数据（30 机场）
 │
 └── README.md
 ```
@@ -152,7 +154,8 @@ mvn spring-boot:run
 
 > 后端运行在 [http://localhost:7176](http://localhost:7176)
 >
-> 首次启动自动建表并插入 5 条测试航班。
+> 首次启动自动建表，并插入 100 条预置航班数据（覆盖北京、上海、广州等 30 个主要机场）。
+>
 > 验证接口：[http://localhost:7176/api/flights](http://localhost:7176/api/flights)
 
 ### 第三步：启动前端
@@ -165,14 +168,13 @@ npm run dev
 
 > 前端运行在 [http://localhost:7175](http://localhost:7175)
 
-### Mock 模式 vs 真实后端
-
-在 `frontend/src/store/flightStore.js` 中：
-
-```js
-useMock: true,   // Mock 模式：40 架模拟航班，无需后端
-useMock: false,  // 真实模式：调用 localhost:7176/api/flights
-```
+> **提示：** 若需重置数据，可在 MySQL 中执行以下语句后重启后端：
+> ```sql
+> SET FOREIGN_KEY_CHECKS = 0;
+> TRUNCATE TABLE flight_track_points;
+> TRUNCATE TABLE flights;
+> SET FOREIGN_KEY_CHECKS = 1;
+> ```
 
 ---
 
@@ -201,13 +203,13 @@ http://localhost:7176
     "flightNo": "CA1001",
     "origin": "北京首都",
     "destination": "上海浦东",
-    "latitude": 35.5,
-    "longitude": 118.0,
+    "latitude": 37.85,
+    "longitude": 117.89,
     "altitude": 10000,
     "speed": 850,
-    "heading": 135,
+    "heading": 150,
     "status": "IN_FLIGHT",
-    "updatedAt": "2026-04-27T17:18:59"
+    "updatedAt": "2026-04-27T18:00:00"
   }
 ]
 ```
@@ -241,23 +243,22 @@ http://localhost:7176
 ## 后续开发计划
 
 ### 高优先级
-- [ ] 对接真实航班数据 API（推荐：[OpenSky Network](https://opensky-network.org) 免费 / [AviationStack](https://aviationstack.com)）
 - [ ] WebSocket 实时推送：后端定时推送航班位置，替代前端轮询
 - [ ] 用户登录与权限系统（Spring Security + JWT）
+- [ ] 航班状态筛选（按飞行中 / 延误 / 取消）
 
 ### 功能扩展
-- [ ] 航班搜索与筛选（按航班号 / 出发地 / 目的地 / 状态）
 - [ ] 延误 / 取消告警提醒（弹窗 + 地图颜色标注）
-- [ ] 机场详情页（各机场出发 / 到达航班列表）
 - [ ] 航班统计报表（折线图、柱状图）
 - [ ] 天气图层叠加（云层、降水、风场）
+- [ ] 移动端适配
 
 ### 工程优化
-- [ ] 后端定时任务采集航班数据（Spring `@Scheduled`）
 - [ ] 统一响应格式封装（`Result<T>`）
 - [ ] 全局异常处理（`@RestControllerAdvice`）
 - [ ] 前端多页面路由（Vue Router）
 - [ ] 单元测试 / 集成测试
+- [ ] Docker 容器化部署
 
 ---
 
