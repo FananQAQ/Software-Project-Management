@@ -79,10 +79,12 @@ function stepFlight(f, dtSeconds) {
   if (f.status === 'LANDING') {
     f.landingTicks--
     if (f.landingTicks <= 0) {
-      // 重生：在新航线起点出发
       const { orig, dest } = pickRoute()
-      const fresh = buildFlight(parseInt(f.flightId.replace('MOCK', ''), 10), orig, dest, 0)
+      const idNum = parseInt(f.flightId.replace('MOCK', '').replace('REAL', ''), 10) || 0
+      const fresh = buildFlight(idNum, orig, dest, 0)
+      const keepId = f.flightId   // 保留原 ID，保证 markerMap 一直有效
       Object.assign(f, fresh)
+      f.flightId = keepId
     }
     return
   }
@@ -105,7 +107,7 @@ export const flightStore = reactive({
   flights: [],
   selectedFlight: null,
   loading: false,
-  useMock: true,
+  useMock: false,
 
   simSpeed:  1,
   simPaused: false,
@@ -144,7 +146,35 @@ export const flightStore = reactive({
         this.flights = generateMockFlights(40)
       } else {
         const res = await fetchFlights()
-        this.flights = res.data
+        // 用机场名匹配本地坐标，补充仿真引擎所需字段
+        this.flights = res.data.map((f, i) => {
+          const orig = AIRPORTS.find(a => a.name === f.origin)
+            || AIRPORTS[i % AIRPORTS.length]
+          const dest = AIRPORTS.find(a => a.name === f.destination)
+            || AIRPORTS[(i + 1) % AIRPORTS.length]
+          const totalDist = haversineKm(orig.lat, orig.lng, dest.lat, dest.lng)
+          const traveledDist = haversineKm(orig.lat, orig.lng, f.latitude, f.longitude)
+          const progress = totalDist > 0 ? Math.min(0.95, traveledDist / totalDist) : 0.5
+          const heading = ((Math.atan2(dest.lng - orig.lng, dest.lat - orig.lat) * 180) / Math.PI + 360) % 360
+          return {
+            flightId: `REAL${f.id}`,
+            flightNo:    f.flightNo,
+            origin:      f.origin,
+            destination: f.destination,
+            origLat:  orig.lat,
+            origLng:  orig.lng,
+            destLat:  dest.lat,
+            destLng:  dest.lng,
+            progress,
+            latitude:  f.latitude,
+            longitude: f.longitude,
+            altitude:  f.altitude,
+            speed:     f.speed || 800,
+            heading:   Math.round(heading),
+            status:    'IN_FLIGHT',
+            landingTicks: 0,
+          }
+        })
       }
     } catch {
       this.flights = generateMockFlights(40)
@@ -156,7 +186,8 @@ export const flightStore = reactive({
   async selectFlight(flightId) {
     const found = this.flights.find(f => f.flightId === flightId)
     if (!found || found.status === 'LANDING') return
-    if (this.useMock) { this.selectedFlight = found; return }
+    this.selectedFlight = found
+    if (this.useMock) return
     try {
       const [detail, track] = await Promise.all([
         fetchFlightDetail(flightId),
