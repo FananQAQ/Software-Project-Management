@@ -3,22 +3,24 @@ server:
 
 spring:
   datasource:
-    url: jdbc:h2:mem:flightdb;DB_CLOSE_DELAY=-1;MODE=MySQL
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
-  h2:
-    console:
-      enabled: true          # 开发时可访问 http://localhost:8080/h2-console
-      path: /h2-console
+    url: jdbc:mysql://localhost:3306/flight_track?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: 123456        # ← 改成你的 MySQL 密码
+  sql:
+    init:
+      mode: always          # 每次启动都执行 data.sql（可改为 never 关闭）
+      data-locations: classpath:data.sql
   jpa:
     hibernate:
-      ddl-auto: create-drop  # 启动时自动建表，重启后清空（开发用）
+      ddl-auto: update      # 首次启动自动建表，之后只做增量变更
+    defer-datasource-initialization: true   # 确保 JPA 建表后再执行 data.sql
     show-sql: false
     properties:
       hibernate:
         format_sql: true
+        dialect: org.hibernate.dialect.MySQL8Dialect
 
-# 跨域：允许前端 localhost:5173 访问
+# 跨域：允许前端 localhost:7175 访问
 cors:
   allowed-origins: http://localhost:7175

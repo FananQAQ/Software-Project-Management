@@ -56,8 +56,7 @@
 | HTTP 客户端 | Axios |
 | 后端框架 | Spring Boot 3.2 |
 | 持久层 | Spring Data JPA |
-| 数据库（开发）| H2 内存数据库 |
-| 数据库（生产）| MySQL（待接入） |
+| 数据库 | MySQL 8.0+ |
 | 构建工具 | Maven 3.9 |
 | 运行环境 | JDK 21 / Node.js 18+ |
 | 版本管理 | Git + GitHub |
@@ -131,6 +130,20 @@ npm run dev
 
 > 访问 [http://localhost:7175](http://localhost:7175)
 
+### 准备 MySQL 数据库
+
+```sql
+CREATE DATABASE flight_track CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+然后修改 `backend/src/main/resources/application.yml` 中的数据库密码：
+
+```yaml
+spring:
+  datasource:
+    password: 你的MySQL密码
+```
+
 ### 启动后端
 
 ```bash
@@ -140,9 +153,7 @@ mvn spring-boot:run
 
 > 后端服务运行在 [http://localhost:7176](http://localhost:7176)
 >
-> H2 控制台（开发用）：[http://localhost:7176/h2-console](http://localhost:7176/h2-console)
-> - JDBC URL：`jdbc:h2:mem:flightdb`
-> - 用户名：`sa`，密码：空
+> 首次启动会自动建表并插入 5 条测试航班数据。
 
 ### 切换为真实后端数据
 
