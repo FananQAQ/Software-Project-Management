@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { fetchFlights, fetchFlightDetail, fetchFlightTrack } from '../api/flightApi'
+import { fetchFlights, fetchOpenSkyFlights } from '../api/flightApi'
 
 export const AIRPORTS = [
   { name: '北京首都',       lat: 40.08, lng: 116.58 },
@@ -44,6 +44,19 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+function nearestAirportName(lat, lng) {
+  let bestName = null
+  let bestDist = Infinity
+  for (const a of AIRPORTS) {
+    const d = haversineKm(lat, lng, a.lat, a.lng)
+    if (d < bestDist) {
+      bestDist = d
+      bestName = a.name
+    }
+  }
+  return bestName
+}
+
 function pickRoute() {
   let oi = Math.floor(Math.random() * AIRPORTS.length)
   let di = Math.floor(Math.random() * AIRPORTS.length)
@@ -86,11 +99,17 @@ function generateMockFlights(count = 40) {
 
 /** 每个仿真 tick 推进一架飞机 */
 function stepFlight(f, dtSeconds) {
+  // OpenSky：位置由定时请求 API 更新，不在前端用倍速「假飞」
+  if (f.liveFromApi) return
+
   if (f.status === 'LANDING') {
     f.landingTicks--
     if (f.landingTicks <= 0) {
       const { orig, dest } = pickRoute()
-      const idNum = parseInt(f.flightId.replace('MOCK', '').replace('REAL', ''), 10) || 0
+      const suffix = String(f.flightId).replace(/^MOCK/, '').replace(/^REAL/, '').replace(/^OSK_/, '')
+      const idNum = /^\d+$/.test(suffix)
+        ? parseInt(suffix, 10)
+        : Math.abs([...suffix].reduce((a, c) => a + c.charCodeAt(0), 0)) % 10_000
       const fresh = buildFlight(idNum, orig, dest, 0)
       const keepId = f.flightId   // 保留原 ID，保证 markerMap 一直有效
       Object.assign(f, fresh)
@@ -113,11 +132,106 @@ function stepFlight(f, dtSeconds) {
   }
 }
 
+/**
+ * 将后端 FlightDTO 转为地图仿真对象（支持数据库航班 + OpenSky 带 origLat/destLat 的航段）
+ */
+function mapApiFlightToSim(f, i) {
+  const hasRoute =
+    f.origLat != null &&
+    f.origLng != null &&
+    f.destLat != null &&
+    f.destLng != null
+
+  let origLat
+  let origLng
+  let destLat
+  let destLng
+
+  if (hasRoute) {
+    origLat = f.origLat
+    origLng = f.origLng
+    destLat = f.destLat
+    destLng = f.destLng
+  } else {
+    const orig = AIRPORTS.find(a => a.name === f.origin) || AIRPORTS[i % AIRPORTS.length]
+    const dest = AIRPORTS.find(a => a.name === f.destination) || AIRPORTS[(i + 1) % AIRPORTS.length]
+    origLat = orig.lat
+    origLng = orig.lng
+    destLat = dest.lat
+    destLng = dest.lng
+  }
+
+  const totalDist = haversineKm(origLat, origLng, destLat, destLng)
+  const traveledDist = haversineKm(origLat, origLng, f.latitude, f.longitude)
+  let progress
+  if (f.routeProgress != null && f.routeProgress >= 0 && f.routeProgress <= 1) {
+    progress = f.routeProgress
+  } else {
+    progress = totalDist > 0 ? Math.min(0.95, traveledDist / totalDist) : 0.5
+  }
+
+  let heading
+  if (f.heading != null && f.heading !== '') {
+    heading = Math.round(Number(f.heading)) % 360
+    if (heading < 0) heading += 360
+  } else {
+    heading = ((Math.atan2(destLng - origLng, destLat - origLat) * 180) / Math.PI + 360) % 360
+  }
+
+  return {
+    flightId: f.icao24 ? `OSK_${f.icao24}` : `REAL${f.id}`,
+    flightNo: f.flightNo,
+    origin: f.origin,
+    destination: f.destination,
+    nearestAirport: (f.latitude != null && f.longitude != null)
+      ? nearestAirportName(f.latitude, f.longitude)
+      : null,
+    origLat,
+    origLng,
+    destLat,
+    destLng,
+    progress,
+    latitude: f.latitude,
+    longitude: f.longitude,
+    altitude: f.altitude,
+    speed: f.speed || 800,
+    heading: Math.round(heading),
+    status: 'IN_FLIGHT',
+    landingTicks: 0,
+    /** OpenSky 等：仅由后端/轮询更新坐标，不参与 stepFlight */
+    liveFromApi: Boolean(f.icao24),
+  }
+}
+
 export const flightStore = reactive({
   flights: [],
+  /** OpenSky 原始列表（包含 nearestAirport），用于筛选派生 flights */
+  flightsAll: [],
   selectedFlight: null,
   loading: false,
   useMock: false,
+  /** 为 true 时从 GET /api/flights/opensky 拉取（需设置 VITE_USE_OPENSKY=true） */
+  useOpenSky: import.meta.env.VITE_USE_OPENSKY === 'true',
+
+  /** 起飞地点筛选（最近机场近似）；空数组=不显示飞机 */
+  selectedOrigins: [],
+
+  setSelectedOrigins(origins) {
+    this.selectedOrigins = Array.isArray(origins) ? origins : []
+    if (!this.useOpenSky) return
+    if (!this.selectedOrigins.length) {
+      this.flightsAll = []
+      this.flights = []
+      this.selectedFlight = null
+      this.selectedAirport = null
+      this.openSkyResyncTick++
+      return
+    }
+    // 立刻拉一次并刷新（无需等待轮询）
+    this.loadFlights().then(() => {
+      this.openSkyResyncTick++
+    })
+  },
 
   /** 搜索关键词（航班号 / 出发地 / 目的地） */
   searchQuery: '',
@@ -156,8 +270,11 @@ export const flightStore = reactive({
   simSpeed:  1,
   simPaused: false,
   simTick:   0,
+  /** OpenSky 静默刷新后递增，供地图全量重绑 Marker */
+  openSkyResyncTick: 0,
 
   _simTimer:   null,
+  _openSkyPollTimer: null,
   _TICK_MS:    120,
   _SIM_BASE_S: 25,
 
@@ -170,11 +287,46 @@ export const flightStore = reactive({
       if (this.selectedFlight?.status === 'LANDING') this.selectedFlight = null
       this.simTick++
     }, this._TICK_MS)
+    if (this.useOpenSky) this._startOpenSkyPoll()
   },
 
   stopSimulation() {
     clearInterval(this._simTimer)
     this._simTimer = null
+    this._stopOpenSkyPoll()
+  },
+
+  _startOpenSkyPoll() {
+    if (this._openSkyPollTimer || !this.useOpenSky) return
+    const ms = Number(import.meta.env.VITE_OPENSKY_POLL_MS) || 45_000
+    this._openSkyPollTimer = setInterval(async () => {
+      if (this.useMock || !this.useOpenSky) return
+      if (!this.selectedOrigins.length) {
+        this.flightsAll = []
+        this.flights = []
+        this.openSkyResyncTick++
+        return
+      }
+      try {
+        const res = await fetchOpenSkyFlights()
+        this.flightsAll = res.data.map((f, i) => mapApiFlightToSim(f, i))
+        this.flights = this.flightsAll.filter(f => this.selectedOrigins.includes(f.nearestAirport))
+        this.openSkyResyncTick++
+        if (this.selectedFlight) {
+          const sid = this.selectedFlight.flightId
+          this.selectedFlight = this.flights.find(x => x.flightId === sid) || null
+        }
+      } catch (e) {
+        console.warn('[flightStore] OpenSky 定时刷新失败', e)
+      }
+    }, ms)
+  },
+
+  _stopOpenSkyPoll() {
+    if (this._openSkyPollTimer) {
+      clearInterval(this._openSkyPollTimer)
+      this._openSkyPollTimer = null
+    }
   },
 
   setSimSpeed(speed) {
@@ -188,39 +340,23 @@ export const flightStore = reactive({
       if (this.useMock) {
         await new Promise(r => setTimeout(r, 200))
         this.flights = generateMockFlights(40)
+      } else if (this.useOpenSky) {
+        // 初始不选起飞地 → 地图无飞机，也不请求 OpenSky
+        if (!this.selectedOrigins.length) {
+          this.flightsAll = []
+          this.flights = []
+        } else {
+          const res = await fetchOpenSkyFlights()
+          this.flightsAll = res.data.map((f, i) => mapApiFlightToSim(f, i))
+          this.flights = this.flightsAll.filter(f => this.selectedOrigins.includes(f.nearestAirport))
+        }
       } else {
         const res = await fetchFlights()
         // 用机场名匹配本地坐标，补充仿真引擎所需字段
-        this.flights = res.data.map((f, i) => {
-          const orig = AIRPORTS.find(a => a.name === f.origin)
-            || AIRPORTS[i % AIRPORTS.length]
-          const dest = AIRPORTS.find(a => a.name === f.destination)
-            || AIRPORTS[(i + 1) % AIRPORTS.length]
-          const totalDist = haversineKm(orig.lat, orig.lng, dest.lat, dest.lng)
-          const traveledDist = haversineKm(orig.lat, orig.lng, f.latitude, f.longitude)
-          const progress = totalDist > 0 ? Math.min(0.95, traveledDist / totalDist) : 0.5
-          const heading = ((Math.atan2(dest.lng - orig.lng, dest.lat - orig.lat) * 180) / Math.PI + 360) % 360
-          return {
-            flightId: `REAL${f.id}`,
-            flightNo:    f.flightNo,
-            origin:      f.origin,
-            destination: f.destination,
-            origLat:  orig.lat,
-            origLng:  orig.lng,
-            destLat:  dest.lat,
-            destLng:  dest.lng,
-            progress,
-            latitude:  f.latitude,
-            longitude: f.longitude,
-            altitude:  f.altitude,
-            speed:     f.speed || 800,
-            heading:   Math.round(heading),
-            status:    'IN_FLIGHT',
-            landingTicks: 0,
-          }
-        })
+        this.flights = res.data.map((f, i) => mapApiFlightToSim(f, i))
       }
-    } catch {
+    } catch (err) {
+      console.warn('[flightStore] 加载航班失败，已回退为本地 Mock（请检查后端是否启动、/api/flights 或 /opensky 是否可访问）', err)
       this.flights = generateMockFlights(40)
     } finally {
       this.loading = false

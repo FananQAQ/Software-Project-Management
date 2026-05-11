@@ -5,7 +5,6 @@ import com.flighttrack.entity.Flight;
 import com.flighttrack.entity.FlightTrackPoint;
 import com.flighttrack.repository.FlightRepository;
 import com.flighttrack.repository.FlightTrackPointRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,11 +12,15 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-@RequiredArgsConstructor
 public class FlightService {
 
     private final FlightRepository flightRepository;
     private final FlightTrackPointRepository trackPointRepository;
+
+    public FlightService(FlightRepository flightRepository, FlightTrackPointRepository trackPointRepository) {
+        this.flightRepository = flightRepository;
+        this.trackPointRepository = trackPointRepository;
+    }
 
     /** 获取所有航班（简要信息） */
     public List<FlightDTO> getAllFlights() {

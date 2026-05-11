@@ -2,7 +2,7 @@ package com.flighttrack.controller;
 
 import com.flighttrack.dto.FlightDTO;
 import com.flighttrack.service.FlightService;
-import lombok.RequiredArgsConstructor;
+import com.flighttrack.service.OpenSkyIngestService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,10 +11,24 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/flights")
-@RequiredArgsConstructor
 public class FlightController {
 
     private final FlightService flightService;
+    private final OpenSkyIngestService openSkyIngestService;
+
+    public FlightController(FlightService flightService, OpenSkyIngestService openSkyIngestService) {
+        this.flightService = flightService;
+        this.openSkyIngestService = openSkyIngestService;
+    }
+
+    /**
+     * OpenSky 实时数据：按注册国分组，每国随机最多 100 架在空航空器。
+     * GET /api/flights/opensky
+     */
+    @GetMapping("/opensky")
+    public ResponseEntity<List<FlightDTO>> getOpenSkyFlights() {
+        return ResponseEntity.ok(openSkyIngestService.fetchSampledFlights());
+    }
 
     /**
      * 获取所有当前活跃航班

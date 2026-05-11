@@ -11,8 +11,8 @@
       <button class="ctrl-btn" @click="resetView">⊙ 复位</button>
     </div>
 
-    <!-- 底部中：时间流速控制栏 -->
-    <div class="speed-bar">
+    <!-- OpenSky：位置由接口定时刷新，不使用前端倍速仿真 -->
+    <div v-if="!store.useOpenSky" class="speed-bar">
       <span class="speed-label">仿真速率</span>
       <button
         v-for="s in speedOptions"
@@ -102,7 +102,7 @@ function initMap() {
     zoom: 4,
     zoomControl: false,
     attributionControl: false,
-    doubleClickZoom: false,   // 禁用双击缩放，确保单击事件能立即响应
+    doubleClickZoom: false,
     maxBounds: [[15, 68], [56, 140]],
     maxBoundsViscosity: 0.85,
   })
@@ -194,7 +194,13 @@ function syncRouteLines() {
     }
   })
 
-  // 清理已消失的（重生后 ID 复用，不会有残留）
+  // 清理已消失的（筛选/刷新后会发生）
+  routeLineMap.forEach((line, id) => {
+    if (!activeIds.has(id)) {
+      line.remove()
+      routeLineMap.delete(id)
+    }
+  })
 }
 
 // ── 飞机 Marker ────────────────────────────────────────────────────
@@ -263,6 +269,13 @@ onMounted(async () => {
 onUnmounted(() => {
   store.stopSimulation()
   map?.remove()
+})
+
+// OpenSky 静默刷新后重绑 Marker（架次增减、坐标更新）
+watch(() => store.openSkyResyncTick, () => {
+  if (!map || store.openSkyResyncTick === 0) return
+  initMarkers()
+  syncRouteLines()
 })
 
 // 每 tick：更新位置；每 6 tick 同步一次航线（处理落地/重生）

@@ -6,7 +6,7 @@ spring:
     url: jdbc:mysql://localhost:3306/flight?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
-    password: Zy041013
+    password: shizhuofan2020
   sql:
     init:
       mode: always          # 每次启动都执行 data.sql（可改为 never 关闭）
@@ -24,3 +24,14 @@ spring:
 # 跨域：允许前端 localhost:7175 访问
 cors:
   allowed-origins: http://localhost:7175
+
+# OpenSky Network（匿名请求有速率限制，建议注册账号后配置 username/password）
+opensky:
+  # 中国及周边空域 bbox，减少全球数据量（与 OpenSky 文档一致）
+  states-url: "https://opensky-network.org/api/states/all?lamin=18&lamax=53&lomin=73&lomax=135"
+  max-per-country: 50
+  # 地理区域均衡抽样：将飞机按网格分桶，每个网格最多取 N 架，避免地图上挤在一起
+  grid-deg: 5
+  max-per-grid-cell: 10
+  username: ${OPENSKY_USERNAME:}
+  password: ${OPENSKY_PASSWORD:}

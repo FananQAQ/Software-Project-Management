@@ -1,3 +1,11 @@
+
+
+1.大作业的任务，找出活动
+
+2.描述五到六个主要的活动
+
+3.活动之间的关系
+
 # ✈ 航班信息跟踪平台
 
 > 软件项目管理课程设计 · Spring Boot + Vue 3 · 多人协作项目
@@ -39,6 +47,7 @@
 - [x] **航班搜索**：顶栏搜索框支持按航班号、出发地、目的地模糊查询，回车或点击结果自动定位并高亮该航班
 - [x] **机场详情页**：地图上展示 30 个机场图标（青色圆点），单击机场弹出左侧详情面板，显示出发/到达航班列表，点击航班行可直接定位并高亮对应飞机
 - [x] 后端接口层（`src/api/flightApi.js`），支持后端数据与 Mock 数据切换
+- [x] **OpenSky 模式**：环境变量 `VITE_USE_OPENSKY=true` 时从 `/api/flights/opensky` 加载；后端默认按中国 bbox 请求 OpenSky，每国随机最多 50 架；前端定时静默刷新坐标，不再用倍速「假飞」
 
 ### 后端（`backend/`）
 - [x] Spring Boot 3.2 + Maven 工程初始化
@@ -48,6 +57,7 @@
 - [x] 全局跨域配置（`WebMvcConfigurer`），允许前端 `localhost:7175` 访问
 - [x] 航班实体（`Flight`）+ 轨迹点实体（`FlightTrackPoint`）
 - [x] RESTful 接口：获取所有飞行中航班、单个航班详情、航班历史轨迹
+- [x] **OpenSky**：`GET /api/flights/opensky` 拉取 state vectors（默认中国空域 bbox），按 `origin_country` 分组后每国随机最多 50 架在空航空器（`opensky.max-per-country` 可配）
 - [x] 前后端联调验证通过，`/api/flights` 接口正常返回数据
 
 ---
@@ -190,7 +200,8 @@ http://localhost:7176
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/flights` | 获取所有飞行中的航班 |
+| GET | `/api/flights` | 获取所有飞行中的航班（MySQL） |
+| GET | `/api/flights/opensky` | OpenSky：默认中国 bbox，按注册国分组，每国随机最多 50 架在空航空器 |
 | GET | `/api/flights/{id}` | 获取单个航班详情 |
 | GET | `/api/flights/{id}/track` | 获取航班历史轨迹点 |
 
@@ -237,6 +248,18 @@ http://localhost:7176
 | `speed` | Integer | 飞行速度（km/h） |
 | `heading` | Integer | 航向角（0–359°，0 为正北） |
 | `status` | String | `IN_FLIGHT` / `LANDED` / `DELAYED` / `CANCELLED` |
+
+OpenSky 接口（`/api/flights/opensky`）在以上字段基础上还可能包含：`icao24`（航空器地址码）、`origLat` / `origLng` / `destLat` / `destLng`（为地图画线合成的航段端点）、`routeProgress`（当前位置在该航段上的比例）。此时 `id` 可能为 `null`，`origin` 多为 OpenSky 的注册国名称。
+
+### OpenSky 使用说明
+
+1. **后端**（`application.yml`）：`opensky.max-per-country` 默认 `50`；`opensky.states-url` 默认带中国及周边 bbox：`lamin=18&lamax=53&lomin=73&lomax=135`（与 [OpenSky API](https://openskynetwork.github.io/opensky-api/rest.html) 一致）。匿名访问有[速率与配额限制](https://openskynetwork.github.io/opensky-api/rest.html#limitations)；可在环境变量中配置 `OPENSKY_USERNAME`、`OPENSKY_PASSWORD` 以提高配额。
+2. **前端**：`VITE_USE_OPENSKY=true` 后重启 `npm run dev`。OpenSky 模式下飞机**位置来自接口**，默认每 **45 秒**再请求一次后端（可在 `.env` 中设置 `VITE_OPENSKY_POLL_MS` 毫秒数）；**不再**用底部倍速条在前端沿航线「秒飞」。数据量约为「bbox 内有飞机的国家数 × 每国最多 50」。
+
+### OpenSky 按起飞地筛选（最近机场近似）
+
+- **定义**：OpenSky `states/all` 不提供真实出发机场，本项目将“起飞地”近似为**飞机当前位置最近的机场**（在 30 个国内机场 `AIRPORTS` 中选最近者）。
+- **交互**：OpenSky 模式下顶部会出现“起飞地”多选筛选。\n  - **默认不选**：地图上不显示任何飞机，也不会请求 OpenSky。\n  - **选择 1～多个起飞地**：前端拉取 `/api/flights/opensky`，按“最近机场”归类后只显示被选中的类别；后续轮询刷新也会保持该过滤。
 
 ---
 

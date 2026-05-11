@@ -28,3 +28,11 @@ export function fetchFlightDetail(flightId) {
 export function fetchFlightTrack(flightId) {
   return http.get(`/api/flights/${flightId}/track`)
 }
+
+/**
+ * OpenSky：按国家分组后每国随机最多 100 架在空航空器（后端配置 max-per-country）
+ * GET /api/flights/opensky
+ */
+export function fetchOpenSkyFlights() {
+  return http.get('/api/flights/opensky')
+}

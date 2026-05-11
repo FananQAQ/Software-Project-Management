@@ -46,6 +46,33 @@
         </div>
       </div>
 
+      <!-- 起飞地筛选（OpenSky 模式：起飞地=最近机场近似） -->
+      <div v-if="store.useOpenSky" class="origin-wrap" ref="originWrapEl">
+        <button class="origin-btn" @click="originOpen = !originOpen">
+          起飞地
+          <span class="origin-count">{{ store.selectedOrigins.length }}</span>
+          <span class="origin-caret">▾</span>
+        </button>
+
+        <div v-if="originOpen" class="origin-panel">
+          <div class="origin-actions">
+            <button class="mini-btn" @click="selectAllOrigins">全选</button>
+            <button class="mini-btn danger" @click="clearOrigins">清空</button>
+          </div>
+          <div class="origin-list">
+            <label v-for="a in airports" :key="a.name" class="origin-item">
+              <input
+                type="checkbox"
+                :value="a.name"
+                v-model="selectedOriginsLocal"
+                @change="applyOrigins"
+              />
+              <span class="origin-name">{{ a.name }}</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
       <div class="topbar-right">
         <span class="stat">在线&nbsp;<strong>{{ store.flights.length }}</strong></span>
         <span class="divider">|</span>
@@ -65,7 +92,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import FlightMap from '../components/map/FlightMap.vue'
-import { flightStore as store } from '../store/flightStore'
+import { flightStore as store, AIRPORTS } from '../store/flightStore'
 
 /* ── 时钟 ─────────────────────────────────────────────────────── */
 const currentTime = ref('')
@@ -81,6 +108,24 @@ onUnmounted(() => clearInterval(timer))
 
 /* ── 搜索 ─────────────────────────────────────────────────────── */
 const searchWrapEl = ref(null)
+const originWrapEl = ref(null)
+const originOpen = ref(false)
+const airports = AIRPORTS
+const selectedOriginsLocal = ref([...store.selectedOrigins])
+
+function applyOrigins() {
+  store.setSelectedOrigins([...selectedOriginsLocal.value])
+}
+
+function clearOrigins() {
+  selectedOriginsLocal.value = []
+  applyOrigins()
+}
+
+function selectAllOrigins() {
+  selectedOriginsLocal.value = airports.map(a => a.name)
+  applyOrigins()
+}
 
 const searchResults = computed(() => {
   const q = store.searchQuery.trim().toLowerCase()
@@ -110,6 +155,9 @@ function onEnter() {
 function onClickOutside(e) {
   if (searchWrapEl.value && !searchWrapEl.value.contains(e.target)) {
     store.searchQuery = ''
+  }
+  if (originWrapEl.value && !originWrapEl.value.contains(e.target)) {
+    originOpen.value = false
   }
 }
 onMounted(() => document.addEventListener('mousedown', onClickOutside))
@@ -296,5 +344,107 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   flex: 1;
   position: relative;
   overflow: hidden;
+}
+
+/* ── 起飞地筛选（OpenSky） ───────────────────────────────────── */
+.origin-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.origin-btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.08);
+  color: #eee;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.origin-btn:hover {
+  background: rgba(255,255,255,0.12);
+}
+
+.origin-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(0,229,255,0.15);
+  border: 1px solid rgba(0,229,255,0.25);
+  color: #00e5ff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.origin-caret { color: #666; font-size: 11px; }
+
+.origin-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 260px;
+  background: #1e2235;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 3100;
+  overflow: hidden;
+}
+
+.origin-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.mini-btn {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: #ccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mini-btn:hover { background: rgba(255,255,255,0.10); color: #fff; }
+.mini-btn.danger:hover { border-color: rgba(230,57,70,0.5); color: #e63946; }
+
+.origin-list {
+  max-height: 280px;
+  overflow: auto;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.origin-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.origin-item:hover { background: rgba(230,57,70,0.12); }
+
+.origin-item input {
+  accent-color: #e63946;
+}
+
+.origin-name {
+  font-size: 12px;
+  color: #ddd;
 }
 </style>
